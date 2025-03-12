@@ -31,7 +31,7 @@ def upload_file():
         file.save(filepath)
         
         # Extract images from Word file
-        extracted_images_path = extract_images(filepath)
+        extracted_images_path, warning = extract_images(filepath)
         
         if not extracted_images_path:
             return "Geen afbeeldingen gevonden", 400
@@ -44,10 +44,19 @@ def upload_file():
                 for img in files:
                     img_path = os.path.join(root, img)
                     img_zip.write(img_path, os.path.basename(img))
+            
+            # Voeg een waarschuwing toe als er .emf of .tmp bestanden waren
+            if warning:
+                warning_path = os.path.join(app.config['RESULT_FOLDER'], "!LET OP! Niet alle figuren zijn succesvol geëxtraheerd.txt")
+                with open(warning_path, "w") as warning_file:
+                    warning_file.write("Waarschuwing: Je Word-bestand bevat hoogstwaarschijnlijk figuren die in Word zijn samengesteld. Dit herken je aan bestanden in deze map met een .emf or .tmp bestandsextensie. Deze worden niet correct geconverteerd naar losse afbeeldingen. Controleer het Word-document, kijk of de klant deze specifieke figuren los kan aanleveren, of exporteer ze eventueel vanuit Word als een .pdf-bestand.\n")
+                img_zip.write(warning_path, "!LET OP! Niet alle figuren zijn succesvol geëxtraheerd.txt")
         
         # Verwijder tijdelijke bestanden
         shutil.rmtree(extracted_images_path)
         os.remove(filepath)
+        if warning:
+            os.remove(warning_path)
         
         return send_file(zip_filepath, as_attachment=True)
     
@@ -62,15 +71,18 @@ def extract_images(docx_path):
     
     media_path = os.path.join(temp_extract_dir, "word/media")
     if not os.path.exists(media_path):
-        return None
+        return None, False
     
     result_dir = os.path.join(app.config['RESULT_FOLDER'], os.path.basename(docx_path).replace(".docx", ""))
     os.makedirs(result_dir, exist_ok=True)
     
+    warning = False
     for img in os.listdir(media_path):
+        if img.endswith(".emf") or img.endswith(".tmp"):
+            warning = True
         shutil.move(os.path.join(media_path, img), os.path.join(result_dir, img))
     
-    return result_dir
+    return result_dir, warning
 
 if __name__ == '__main__':
     app.run(debug=True)
